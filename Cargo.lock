@@ -1,0 +1,12 @@
+[root]
+name = "atomic_chunks_mut"
+version = "0.1.0"
+dependencies = [
+ "crossbeam 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "crossbeam"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
