@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 extern crate crossbeam;
 use crossbeam::scope;
 
@@ -100,24 +102,23 @@ mod atomic_chunks_mut {
         }
 
         #[allow(mutable_transmutes)]
-        unsafe fn next(&self) -> Option<&'a mut [T]> {
-            let mut current;
+        unsafe fn next(&self) -> Option<(usize, &'a mut [T])> {
             loop {
-                current = self.next.load(Ordering::SeqCst);
+                let current = self.next.load(Ordering::SeqCst);
                 assert!(current <= self.slice.len());
                 if current == self.slice.len() {
                     return None;
                 }
                 let end = std::cmp::min(current + self.step, self.slice.len());
                 if self.next.compare_and_swap(current, end, Ordering::SeqCst) == current {
-                    return Some(std::mem::transmute(&self.slice[current..end]));
+                    return Some((current / self.step, std::mem::transmute(&self.slice[current..end])));
                 }
             }
         }
     }
 
     impl<'a, 'b, T> Iterator for &'b AtomicChunksMut<'a, T> {
-        type Item = &'a mut [T];
+        type Item = (usize, &'a mut [T]);
         fn next(&mut self) -> Option<Self::Item> { unsafe { (*self).next() } }
     }
 }
@@ -129,8 +130,8 @@ fn test_ait() {
     let mut v = vec![0,1,2,3,4,5,6,7,8,9,10];
     let c : Vec<_> = (&AtomicChunksMut::new(&mut v[..], 3)).collect();
 
-    let v2 = vec![0,1,2,3,4,5,6,7,8,9,10];
-    assert_eq!(c, vec![&v2[0..3], &v2[3..6], &v2[6..9], &v2[9..11]]);
+    assert_eq!((&c).iter().map(|&(i, _)| i).collect::<Vec<_>>(), vec![0,1,2,3]);
+    assert_eq!((&c).iter().map(|&(_, ref s)| s[0]).collect::<Vec<_>>(), vec![0,3,6,9]);
 }
 
 #[test]
@@ -143,7 +144,7 @@ fn stress_test_ait() {
         for _ in 0..10 {
             threads.push(scope.spawn(|| {
                 let mut v = vec![];
-                for chunk in &it { v.push(chunk[0]); }
+                for (_, chunk) in &it { v.push(chunk[0]); }
                 v
             }));
         }
@@ -157,8 +158,4 @@ fn stress_test_ait() {
             }
         }
     });
-}
-
-fn main() {
-    println!("Hello, world!");
 }
