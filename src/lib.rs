@@ -104,15 +104,6 @@ mod atomic_chunks_mut {
 
         #[allow(mutable_transmutes)]
         unsafe fn next(&self) -> Option<(usize, &'a mut [T])> {
-            let current = self.next.fetch_add(self.step, SeqCst);
-            if current >= self.slice.len() { return None; }
-            let end = std::cmp::min(current + self.step, self.slice.len());
-            return Some((current / self.step,
-                         std::mem::transmute(&self.slice[current..end])));
-        }
-
-        #[allow(mutable_transmutes)]
-        unsafe fn next(&self) -> Option<(usize, &'a mut [T])> {
             loop {
                 let current = self.next.load(SeqCst);
                 assert!(current <= self.slice.len());
