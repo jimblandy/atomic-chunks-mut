@@ -85,6 +85,7 @@ mod atomic_chunks_mut {
     use crossbeam::scope;
     use std;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::Ordering::*;
 
     pub struct AtomicChunksMut<'a, T: 'a> {
         slice: &'a [T],
@@ -103,14 +104,23 @@ mod atomic_chunks_mut {
 
         #[allow(mutable_transmutes)]
         unsafe fn next(&self) -> Option<(usize, &'a mut [T])> {
+            let current = self.next.fetch_add(self.step, SeqCst);
+            if current >= self.slice.len() { return None; }
+            let end = std::cmp::min(current + self.step, self.slice.len());
+            return Some((current / self.step,
+                         std::mem::transmute(&self.slice[current..end])));
+        }
+
+        #[allow(mutable_transmutes)]
+        unsafe fn next(&self) -> Option<(usize, &'a mut [T])> {
             loop {
-                let current = self.next.load(Ordering::SeqCst);
+                let current = self.next.load(SeqCst);
                 assert!(current <= self.slice.len());
                 if current == self.slice.len() {
                     return None;
                 }
                 let end = std::cmp::min(current + self.step, self.slice.len());
-                if self.next.compare_and_swap(current, end, Ordering::SeqCst) == current {
+                if self.next.compare_and_swap(current, end, SeqCst) == current {
                     return Some((current / self.step, std::mem::transmute(&self.slice[current..end])));
                 }
             }
