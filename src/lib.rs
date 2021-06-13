@@ -111,7 +111,7 @@ mod atomic_chunks_mut {
                     return None;
                 }
                 let end = std::cmp::min(current + self.step, self.slice.len());
-                if self.next.compare_and_swap(current, end, SeqCst) == current {
+                if self.next.compare_exchange(current, end, SeqCst, SeqCst).is_ok() {
                     return Some((current / self.step, std::mem::transmute(&self.slice[current..end])));
                 }
             }
