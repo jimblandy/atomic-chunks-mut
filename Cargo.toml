@@ -2,6 +2,7 @@
 name = "atomic_chunks_mut"
 version = "0.1.0"
 authors = ["Jim Blandy <jimb@red-bean.com>"]
+edition = "2018"
 
 [dependencies]
-crossbeam = "*"
+crossbeam = "0.8"

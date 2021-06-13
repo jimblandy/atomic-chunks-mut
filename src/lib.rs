@@ -1,8 +1,7 @@
-#![allow(unused_imports)]
+#![warn(rust_2018_idioms)]
+#![allow(elided_lifetimes_in_paths)]
 
-extern crate crossbeam;
-use crossbeam::scope;
-
+#[cfg(test)]
 mod atomic_counter {
     use crossbeam::scope;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,13 +12,13 @@ mod atomic_counter {
 
         scope(|scope| {
             for _ in 0..100 {
-                scope.spawn(|| {
+                scope.spawn(|_| {
                     for _ in 0..100_000 {
                         n.fetch_add(1, Ordering::Relaxed);
                     }
                 });
             }
-        });
+        }).unwrap();
 
         assert_eq!(n.load(Ordering::SeqCst), 10_000_000);
     }
@@ -46,7 +45,8 @@ mod atomic_iterator {
                     if current == 0 {
                         return None;
                     }
-                    if self.count.compare_and_swap(current, current - 1, Ordering::SeqCst) == current {
+                    if self.count.compare_exchange(current, current - 1,
+                                                   Ordering::SeqCst, Ordering::SeqCst).is_ok() {
                         return Some(current - 1);
                     }
                 }
@@ -63,31 +63,31 @@ mod atomic_iterator {
     fn test_ai() {
         for _ in 0..100 {
             let c = counter::Counter::new(10000);
-            let mut threads = vec![];
-            scope(|scope| {
-                for _ in 0..100 {
-                    threads.push(scope.spawn(|| { c.collect::<Vec<_>>() }));
-                }
-            });
 
-            let mut seen = [false; 10000];
-            for thread in threads {
-                for i in thread.join() {
-                    assert!(!seen[i]);
-                    seen[i] = true;
+            scope(|scope| {
+                let mut threads = vec![];
+                for _ in 0..100 {
+                    threads.push(scope.spawn(|_| { c.collect::<Vec<_>>() }));
                 }
-            }
+
+                let mut seen = [false; 10000];
+                for thread in threads {
+                    for i in thread.join().unwrap() {
+                        assert!(!seen[i]);
+                        seen[i] = true;
+                    }
+                }
+            }).unwrap();
         }
     }
 }
 
 mod atomic_chunks_mut {
-    use crossbeam::scope;
     use std;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering::*;
 
-    pub struct AtomicChunksMut<'a, T: 'a> {
+    pub struct AtomicChunksMut<'a, T> {
         slice: &'a [T],
         step: usize,
         next: AtomicUsize
@@ -124,7 +124,7 @@ mod atomic_chunks_mut {
     }
 }
 
-pub use atomic_chunks_mut::AtomicChunksMut;
+pub use self::atomic_chunks_mut::AtomicChunksMut;
 
 #[test]
 fn test_ait() {
@@ -137,13 +137,14 @@ fn test_ait() {
 
 #[test]
 fn stress_test_ait() {
+    use crossbeam::scope;
     let mut v : Vec<usize> = (0..10000).collect();
     let it = AtomicChunksMut::new(&mut v[..], 3);
 
     scope(|scope| {
         let mut threads = vec![];
         for _ in 0..10 {
-            threads.push(scope.spawn(|| {
+            threads.push(scope.spawn(|_| {
                 let mut v = vec![];
                 for (_, chunk) in &it { v.push(chunk[0]); }
                 v
@@ -152,11 +153,11 @@ fn stress_test_ait() {
 
         let mut seen = vec![false; 10000];
         for thread in threads {
-            for first in thread.join() {
+            for first in thread.join().unwrap() {
                 assert!(first % 3 == 0);
                 assert!(!seen[first]);
                 seen[first] = true;
             }
         }
-    });
+    }).unwrap();
 }
